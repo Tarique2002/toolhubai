@@ -2,9 +2,10 @@ fastapi
 uvicorn
 python-multipart
 pillow
-opencv-python
+opencv-python-headless
 numpy
-rembg
+rembg[cpu]
+onnxruntime
 pdf2docx
-docx2pdf
 python-docx
+PyMuPDF
