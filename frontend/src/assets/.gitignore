@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# Build folders
+dist/
+build/
+
+# Temporary files
+uploads/
+temp/
+*.pdf
+*.docx
+
+# Images generated during testing
+*.png
+*.jpg
+*.jpeg
+
+# OS files
+.DS_Store
+Thumbs.db
