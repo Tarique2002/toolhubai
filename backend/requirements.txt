@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+pillow
+opencv-python
+numpy
+rembg
+pdf2docx
+docx2pdf
+python-docx
