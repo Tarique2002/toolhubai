@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from rembg import remove
 from pdf2docx import Converter
 from PIL import Image, ImageEnhance, ImageFilter
-from docx2pdf import convert
 from pdfplumber import open as pdf_open
 from docx import Document
 
@@ -14,6 +13,7 @@ import numpy as np
 import base64
 import uuid
 import io
+import os
 
 app = FastAPI()
 
@@ -31,7 +31,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"message": "ToolHubAI backend running"}
+    return {"message": "ToolHubAI backend running successfully 🚀"}
 
 
 # -------------------------
@@ -73,12 +73,28 @@ async def remove_object(
     else:
         mask_gray = mask_image
 
-    _, mask_thresh = cv2.threshold(mask_gray, 10, 255, cv2.THRESH_BINARY)
+    _, mask_thresh = cv2.threshold(
+        mask_gray,
+        10,
+        255,
+        cv2.THRESH_BINARY
+    )
 
-    inpainted = cv2.inpaint(image, mask_thresh, 3, cv2.INPAINT_TELEA)
+    inpainted = cv2.inpaint(
+        image,
+        mask_thresh,
+        3,
+        cv2.INPAINT_TELEA
+    )
 
-    _, buffer = cv2.imencode(".png", inpainted)
-    encoded = base64.b64encode(buffer).decode("utf-8")
+    _, buffer = cv2.imencode(
+        ".png",
+        inpainted
+    )
+
+    encoded = base64.b64encode(
+        buffer
+    ).decode("utf-8")
 
     return {"image": encoded}
 
@@ -95,32 +111,23 @@ async def chat_assistant(request: ChatRequest):
     prompt = request.message.strip().lower()
 
     if not prompt:
-        return {"answer": "Send a question or tell me what you want help with."}
+        return {
+            "answer": "Send a question or tell me what you want help with."
+        }
 
-    if "deploy" in prompt or "live" in prompt or "host" in prompt:
+    if "deploy" in prompt or "live" in prompt:
         answer = (
-            "To deploy live, build the frontend and host it on Vercel or Netlify. "
-            "From the `frontend` folder, run `npm install` and `npm run build`. "
-            "Then connect the `frontend/dist` folder as the publish directory."
+            "Deploy frontend on Vercel and backend on Render."
         )
-    elif "object" in prompt or "remove" in prompt or "mask" in prompt:
-        answer = (
-            "Use the Object Remover page. Upload your photo, paint over the unwanted object, "
-            "and press Remove Object. The backend will inpaint the selected area."
-        )
-    elif "dark" in prompt or "mode" in prompt or "theme" in prompt:
-        answer = (
-            "Use the theme toggle at the top of the app to switch between light and dark mode instantly."
-        )
+
     elif "pdf" in prompt or "docx" in prompt:
         answer = (
-            "For document work, use the PDF or DOCX converter pages. "
-            "You can convert files directly in the app."
+            "Use PDF and DOCX tools for conversion."
         )
+
     else:
         answer = (
-            "I can help with image cleanup, document conversion, deployment, and general workflow guidance. "
-            "Ask about a tool or what to do next."
+            "I can help with ToolHubAI features and workflow."
         )
 
     return {"answer": answer}
@@ -151,37 +158,19 @@ async def pdf_to_docx(file: UploadFile = File(...)):
 
 
 # -------------------------
-# DOCX → PDF
-# -------------------------
-@app.post("/docx-to-pdf")
-async def docx_to_pdf(file: UploadFile = File(...)):
-    unique_id = str(uuid.uuid4())
-
-    docx_path = f"{unique_id}.docx"
-    pdf_path = f"{unique_id}.pdf"
-
-    with open(docx_path, "wb") as f:
-        f.write(await file.read())
-
-    convert(docx_path, pdf_path)
-
-    return FileResponse(
-        path=pdf_path,
-        filename="converted.pdf",
-        media_type="application/pdf"
-    )
-
-
-# -------------------------
 # AI IMAGE ENHANCER
 # -------------------------
 @app.post("/enhance-image")
 async def enhance_image(file: UploadFile = File(...)):
     contents = await file.read()
 
-    image = Image.open(io.BytesIO(contents))
+    image = Image.open(
+        io.BytesIO(contents)
+    )
 
-    image = image.filter(ImageFilter.SHARPEN)
+    image = image.filter(
+        ImageFilter.SHARPEN
+    )
 
     contrast = ImageEnhance.Contrast(image)
     image = contrast.enhance(1.3)
@@ -190,7 +179,11 @@ async def enhance_image(file: UploadFile = File(...)):
     image = sharpness.enhance(2.0)
 
     img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format="PNG")
+
+    image.save(
+        img_byte_arr,
+        format="PNG"
+    )
 
     encoded = base64.b64encode(
         img_byte_arr.getvalue()
@@ -217,6 +210,7 @@ async def analyze_resume(file: UploadFile = File(...)):
         with pdf_open(temp_file) as pdf:
             for page in pdf.pages:
                 extracted = page.extract_text()
+
                 if extracted:
                     text += extracted
 
@@ -234,12 +228,15 @@ async def analyze_resume(file: UploadFile = File(...)):
             text += para.text + "\n"
 
     skills_db = [
-        "python", "java", "sql", "react",
-        "fastapi", "machine learning",
-        "data analysis", "docker", "aws",
-        "javascript", "html", "css",
-        "node.js", "mongodb", "git",
-        "github"
+        "python", "java", "sql",
+        "react", "fastapi",
+        "machine learning",
+        "data analysis",
+        "docker", "aws",
+        "javascript",
+        "html", "css",
+        "mongodb",
+        "git", "github"
     ]
 
     found_skills = []
@@ -248,18 +245,22 @@ async def analyze_resume(file: UploadFile = File(...)):
         if skill.lower() in text.lower():
             found_skills.append(skill)
 
-    score = min(100, len(found_skills) * 8 + 20)
+    score = min(
+        100,
+        len(found_skills) * 8 + 20
+    )
 
     suggestions = []
 
     if "projects" not in text.lower():
-        suggestions.append("Add a Projects section")
+        suggestions.append(
+            "Add a Projects section"
+        )
 
     if "experience" not in text.lower():
-        suggestions.append("Add experience or internships")
-
-    if len(found_skills) < 5:
-        suggestions.append("Add more technical skills")
+        suggestions.append(
+            "Add experience or internships"
+        )
 
     ats_tips = [
         "Use clear headings",
@@ -277,7 +278,7 @@ async def analyze_resume(file: UploadFile = File(...)):
 
 
 # -------------------------
-# PHOTO UPSCALER AI
+# PHOTO UPSCALER
 # -------------------------
 @app.post("/upscale-image")
 async def upscale_image(file: UploadFile = File(...)):
@@ -293,7 +294,6 @@ async def upscale_image(file: UploadFile = File(...)):
         cv2.IMREAD_COLOR
     )
 
-    # 2x upscale
     upscaled = cv2.resize(
         image,
         None,
@@ -302,10 +302,9 @@ async def upscale_image(file: UploadFile = File(...)):
         interpolation=cv2.INTER_CUBIC
     )
 
-    # sharpen
     kernel = np.array([
         [0, -1, 0],
-        [-1, 5,-1],
+        [-1, 5, -1],
         [0, -1, 0]
     ])
 
@@ -325,3 +324,20 @@ async def upscale_image(file: UploadFile = File(...)):
     ).decode("utf-8")
 
     return {"image": encoded}
+
+
+# -------------------------
+# RENDER STARTUP
+# -------------------------
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(
+        os.environ.get("PORT", 10000)
+    )
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=port
+    )
