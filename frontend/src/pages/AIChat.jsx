@@ -1,7 +1,7 @@
 import { useState } from "react";
-import axios from "axios";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import api from "../lib/api";
 
 export default function AIChat() {
   const [message, setMessage] = useState("");
@@ -21,7 +21,7 @@ export default function AIChat() {
     setLoading(true);
 
     try {
-      const res = await axios.post("http://127.0.0.1:8000/chat-assistant", {
+      const res = await api.post("/chat-assistant", {
         message: newEntry.text,
       });
 
@@ -31,9 +31,12 @@ export default function AIChat() {
       ]);
     } catch (error) {
       console.error(error);
+      const msg = error.code === "ECONNABORTED"
+        ? "The server is waking up — please wait 30 seconds and try again."
+        : "Sorry, I couldn't reach the assistant. Please try again.";
       setChat((prev) => [
         ...prev,
-        { role: "assistant", text: "Sorry, I couldn't reach the assistant." },
+        { role: "assistant", text: msg },
       ]);
     } finally {
       setLoading(false);
@@ -43,6 +46,12 @@ export default function AIChat() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+
+        {/* Cold-start notice */}
+        <div className="mb-6 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
+          ⏳ <strong>First request may take ~30–60 seconds</strong> — the server wakes up on demand. Subsequent requests are fast.
+        </div>
+
         <div className="mb-8 rounded-[32px] border border-slate-200/80 bg-white/90 p-8 shadow-soft dark:border-slate-800/80 dark:bg-slate-900/85">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -72,6 +81,12 @@ export default function AIChat() {
                     <p className="mt-3 whitespace-pre-line leading-7">{entry.text}</p>
                   </div>
                 ))
+              )}
+              {loading && (
+                <div className="rounded-3xl bg-brand-50 p-5 dark:bg-brand-500/10">
+                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Assistant</p>
+                  <p className="mt-3 text-slate-500 dark:text-slate-400">Thinking…</p>
+                </div>
               )}
             </div>
           </div>

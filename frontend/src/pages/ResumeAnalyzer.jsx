@@ -1,29 +1,35 @@
 import { useState } from "react";
-import axios from "axios";
 import { Link } from "react-router-dom";
+import api from "../lib/api";
 
 export default function ResumeAnalyzer() {
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const analyzeResume = async () => {
     if (!file) {
-      alert("Upload resume first");
+      setError("Please upload a resume first.");
       return;
     }
 
     setLoading(true);
+    setError(null);
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await axios.post("http://127.0.0.1:8000/analyze-resume", formData);
+      const res = await api.post("/analyze-resume", formData);
       setResult(res.data);
-    } catch (error) {
-      console.error(error);
-      alert("Analysis failed");
+    } catch (err) {
+      console.error(err);
+      if (err.code === "ECONNABORTED") {
+        setError("Request timed out. The server may be waking up — please try again in 30 seconds.");
+      } else {
+        setError("Analysis failed. Please make sure your file is a valid PDF or DOCX.");
+      }
     } finally {
       setLoading(false);
     }
@@ -47,13 +53,19 @@ export default function ResumeAnalyzer() {
           </div>
         </div>
 
+        {/* Cold-start notice */}
+        <div className="mb-6 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
+          ⏳ <strong>First request may take ~30–60 seconds</strong> — the server wakes up on demand. Subsequent requests are fast.
+        </div>
+
         <div className="rounded-[32px] border border-slate-200/80 bg-white/90 p-8 shadow-soft dark:border-slate-800/80 dark:bg-slate-900/85">
           <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">Upload PDF or DOCX</label>
-          <input type="file" accept=".pdf,.docx" onChange={(e) => setFile(e.target.files[0])} className="mt-4 w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-400 dark:focus:ring-brand-500/10" />
+          <input type="file" accept=".pdf,.docx" onChange={(e) => { setFile(e.target.files[0]); setError(null); }} className="mt-4 w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-400 dark:focus:ring-brand-500/10" />
           <button onClick={analyzeResume} disabled={loading} className="mt-6 inline-flex w-full items-center justify-center rounded-3xl bg-brand-600 px-6 py-4 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60">
-            Analyze Resume
+            {loading ? "Analyzing…" : "Analyze Resume"}
           </button>
-          {loading && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Analyzing...</p>}
+          {loading && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Analyzing your resume — please wait…</p>}
+          {error && <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">{error}</p>}
 
           {result && (
             <div className="mt-10 space-y-6 rounded-[32px] border border-slate-200/80 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-950/70">
@@ -67,11 +79,15 @@ export default function ResumeAnalyzer() {
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Skills Found</h3>
-                  <ul className="mt-4 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                    {result.skills.map((skill, index) => (
-                      <li key={index} className="rounded-2xl bg-slate-50 px-3 py-2 dark:bg-slate-950">{skill}</li>
-                    ))}
-                  </ul>
+                  {result.skills.length === 0 ? (
+                    <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No matching skills detected. Add more technical keywords.</p>
+                  ) : (
+                    <ul className="mt-4 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                      {result.skills.map((skill, index) => (
+                        <li key={index} className="rounded-2xl bg-slate-50 px-3 py-2 dark:bg-slate-950">{skill}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Suggestions</h3>

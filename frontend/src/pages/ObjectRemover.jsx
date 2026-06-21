@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import api from "../lib/api";
 
 export default function ObjectRemover() {
   const [file, setFile] = useState(null);
@@ -118,12 +118,12 @@ export default function ObjectRemover() {
 
   const handleRemove = async () => {
     if (!file) {
-      alert("Please upload an image first.");
+      setStatus("Please upload an image first.");
       return;
     }
 
     if (!canvasRef.current) {
-      alert("Mask canvas is not ready.");
+      setStatus("Mask canvas is not ready. Please try again.");
       return;
     }
 
@@ -133,7 +133,7 @@ export default function ObjectRemover() {
     const maskBlob = await new Promise((resolve) => canvasRef.current.toBlob(resolve, "image/png"));
     if (!maskBlob) {
       setLoading(false);
-      alert("Failed to build the mask. Try again.");
+      setStatus("Failed to build the mask. Try again.");
       return;
     }
 
@@ -142,7 +142,7 @@ export default function ObjectRemover() {
     formData.append("mask", maskBlob, "mask.png");
 
     try {
-      const response = await axios.post("http://127.0.0.1:8000/remove-object", formData, {
+      const response = await api.post("/remove-object", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -150,8 +150,10 @@ export default function ObjectRemover() {
       setStatus("Object removed successfully. Download your cleaned image.");
     } catch (error) {
       console.error(error);
-      alert("Something went wrong. Make sure the backend is running.");
-      setStatus("Failed to remove object. Check the backend and try again.");
+      const msg = error.code === "ECONNABORTED"
+        ? "Request timed out. The server may be waking up — try again in 30 seconds."
+        : "Something went wrong. Make sure the backend is running.";
+      setStatus(msg);
     } finally {
       setLoading(false);
     }
@@ -160,10 +162,16 @@ export default function ObjectRemover() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+        {/* Cold-start notice */}
+        <div className="mb-6 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
+          ⏳ <strong>First request may take ~30–60 seconds</strong> — the server wakes up on demand. Subsequent requests are fast.
+        </div>
+
         <div className="mb-8 flex flex-col gap-4 rounded-[32px] border border-slate-200/80 bg-white/90 p-8 shadow-soft dark:border-slate-800/80 dark:bg-slate-900/85 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.3em] text-brand-600">Object Remover</p>
-            <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Fast & Stable Object Remover</h1>
+            <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Fast &amp; Stable Object Remover</h1>
             <p className="mt-4 max-w-2xl text-slate-500 dark:text-slate-400">
               Upload a photo, drag or click to drop the unwanted object, paint over it, and remove it with AI-powered inpainting.
             </p>
@@ -181,7 +189,7 @@ export default function ObjectRemover() {
                 <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-sm dark:bg-slate-900">
                   <span className="text-3xl">📤</span>
                 </div>
-                <p className="mt-4 text-lg font-semibold">Drag & drop an image, or click to upload</p>
+                <p className="mt-4 text-lg font-semibold">Drag &amp; drop an image, or click to upload</p>
                 <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Supported formats: JPG, PNG, WEBP</p>
                 {dragActive && <p className="mt-4 text-sm text-brand-600">Drop the file to upload</p>}
               </label>
@@ -193,7 +201,7 @@ export default function ObjectRemover() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <button onClick={handleRemove} disabled={loading} className="rounded-3xl bg-brand-600 px-5 py-4 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60">
-                    Remove Object
+                    {loading ? "Removing…" : "Remove Object"}
                   </button>
                   <button onClick={handleClear} className="rounded-3xl border border-slate-300 px-5 py-4 text-sm font-semibold text-slate-900 transition hover:border-brand-500 hover:text-brand-600 dark:border-slate-700 dark:text-slate-100">
                     Clear Mask
@@ -222,6 +230,7 @@ export default function ObjectRemover() {
                     onPointerUp={stopDrawing}
                     onPointerLeave={stopDrawing}
                     className="absolute inset-0 h-full w-full cursor-crosshair"
+                    style={{ opacity: 0.55 }}
                   />
                 </div>
               ) : (
@@ -234,7 +243,7 @@ export default function ObjectRemover() {
         </div>
 
         {result && (
-          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="rounded-[32px] border border-slate-200/80 bg-white/90 p-8 shadow-soft dark:border-slate-800/80 dark:bg-slate-900/85">
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mt-6 rounded-[32px] border border-slate-200/80 bg-white/90 p-8 shadow-soft dark:border-slate-800/80 dark:bg-slate-900/85">
             <h2 className="text-2xl font-semibold">Cleaned Image</h2>
             <img src={`data:image/png;base64,${result}`} alt="Cleaned result" className="mt-6 w-full rounded-3xl border border-slate-200/80 dark:border-slate-800/80" />
             <a href={`data:image/png;base64,${result}`} download="cleaned-image.png" className="mt-6 inline-flex rounded-3xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">

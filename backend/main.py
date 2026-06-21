@@ -4,14 +4,20 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pdf2docx import Converter
 from PIL import Image, ImageEnhance, ImageFilter
+from rembg import remove
 
 from docx import Document
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import fitz
 
 import cv2
 import numpy as np
 import base64
 import uuid
 import io
+import os
+import textwrap
 
 app = FastAPI()
 
@@ -22,7 +28,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -112,17 +118,56 @@ async def chat_assistant(request: ChatRequest):
 
     if "deploy" in prompt:
         return {
-            "answer": "Deploy frontend on Vercel and backend on Render."
+            "answer": "Deploy frontend on Vercel and backend on Render. Add VITE_API_BASE_URL in your Vercel env settings pointing to your Render URL."
         }
 
-    elif "pdf" in prompt:
+    elif "pdf" in prompt or "convert" in prompt:
         return {
-            "answer": "Use the PDF tools to convert files."
+            "answer": "Use the PDF tools to convert files. Upload a PDF to get a DOCX, or upload a DOCX to get a PDF."
+        }
+
+    elif "background" in prompt or "remove bg" in prompt:
+        return {
+            "answer": "Use the Background Remover tool. Upload any image and the AI will strip the background and return a transparent PNG."
+        }
+
+    elif "object" in prompt or "erase" in prompt:
+        return {
+            "answer": "Use the Object Remover tool. Upload an image, paint over the object you want removed, then click Remove Object."
+        }
+
+    elif "enhance" in prompt or "sharpen" in prompt:
+        return {
+            "answer": "Use the AI Image Enhancer to boost sharpness, contrast, and clarity with one click."
+        }
+
+    elif "upscale" in prompt or "resolution" in prompt:
+        return {
+            "answer": "Use the Photo Upscaler to double the resolution of any image using AI interpolation."
+        }
+
+    elif "resume" in prompt or "cv" in prompt:
+        return {
+            "answer": "Use the Resume Analyzer to upload your resume PDF or DOCX and get a score, found skills, and ATS improvement tips."
         }
 
     return {
-        "answer": "I can help with ToolHubAI tools."
+        "answer": "I can help you with ToolHubAI tools: Background Remover, Object Remover, Image Enhancer, Photo Upscaler, PDF Converter, and Resume Analyzer. Just ask me anything!"
     }
+
+
+# -------------------------
+# REMOVE BACKGROUND
+# -------------------------
+@app.post("/remove-bg")
+async def remove_bg(
+    file: UploadFile = File(...)
+):
+    contents = await file.read()
+    output = remove(contents)
+    encoded = base64.b64encode(output).decode("utf-8")
+
+    return {"image": encoded}
 
 
 # -------------------------
@@ -134,8 +179,8 @@ async def pdf_to_docx(
 ):
     unique_id = str(uuid.uuid4())
 
-    pdf_path = f"{unique_id}.pdf"
-    docx_path = f"{unique_id}.docx"
+    pdf_path = f"/tmp/{unique_id}.pdf"
+    docx_path = f"/tmp/{unique_id}.docx"
 
     with open(pdf_path, "wb") as f:
         f.write(await file.read())
@@ -144,10 +189,60 @@ async def pdf_to_docx(
     converter.convert(docx_path)
     converter.close()
 
+    # Clean up source PDF
+    if os.path.exists(pdf_path):
+        os.remove(pdf_path)
+
     return FileResponse(
         path=docx_path,
         filename="converted.docx",
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        background=None
+    )
+
+
+# -------------------------
+# DOCX → PDF
+# -------------------------
+@app.post("/docx-to-pdf")
+async def docx_to_pdf(
+    file: UploadFile = File(...)
+):
+    unique_id = str(uuid.uuid4())
+
+    docx_path = f"/tmp/{unique_id}.docx"
+    pdf_path = f"/tmp/{unique_id}.pdf"
+
+    with open(docx_path, "wb") as f:
+        f.write(await file.read())
+
+    doc = Document(docx_path)
+    pdf = canvas.Canvas(pdf_path, pagesize=letter)
+    width, height = letter
+    y = height - 72
+
+    for para in doc.paragraphs:
+        lines = textwrap.wrap(para.text, width=90) or [""]
+
+        for line in lines:
+            if y < 72:
+                pdf.showPage()
+                y = height - 72
+
+            pdf.drawString(72, y, line)
+            y -= 16
+
+        y -= 8
+
+    pdf.save()
+
+    if os.path.exists(docx_path):
+        os.remove(docx_path)
+
+    return FileResponse(
+        path=pdf_path,
+        filename="converted.pdf",
+        media_type="application/pdf"
     )
 
 
@@ -198,30 +293,39 @@ async def analyze_resume(
     file: UploadFile = File(...)
 ):
     text = ""
+    unique_id = str(uuid.uuid4())
 
     if file.filename.endswith(".pdf"):
         contents = await file.read()
 
-        with open("resume.pdf", "wb") as f:
+        pdf_path = f"/tmp/resume_{unique_id}.pdf"
+        with open(pdf_path, "wb") as f:
             f.write(contents)
 
-        with pdf_open("resume.pdf") as pdf:
-            for page in pdf.pages:
-                extracted = page.extract_text()
+        with fitz.open(pdf_path) as pdf:
+            for page in pdf:
+                extracted = page.get_text()
 
                 if extracted:
                     text += extracted
 
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+
     elif file.filename.endswith(".docx"):
         contents = await file.read()
 
-        with open("resume.docx", "wb") as f:
+        docx_path = f"/tmp/resume_{unique_id}.docx"
+        with open(docx_path, "wb") as f:
             f.write(contents)
 
-        doc = Document("resume.docx")
+        doc = Document(docx_path)
 
         for para in doc.paragraphs:
             text += para.text + "\n"
+
+        if os.path.exists(docx_path):
+            os.remove(docx_path)
 
     skills_db = [
         "python",
@@ -233,7 +337,17 @@ async def analyze_resume(
         "html",
         "css",
         "git",
-        "github"
+        "github",
+        "typescript",
+        "node",
+        "docker",
+        "aws",
+        "flask",
+        "django",
+        "machine learning",
+        "data science",
+        "tensorflow",
+        "pytorch",
     ]
 
     found_skills = []
@@ -244,15 +358,24 @@ async def analyze_resume(
 
     score = min(
         100,
-        len(found_skills) * 8 + 20
+        len(found_skills) * 7 + 20
     )
 
     return {
         "score": score,
         "skills": found_skills,
         "suggestions": [
-            "Add Projects section",
-            "Use ATS keywords"
+            "Add a Projects section with links",
+            "Use ATS-friendly keywords from job descriptions",
+            "Quantify achievements with numbers (e.g., 'improved speed by 30%')",
+            "Keep to 1 page if under 5 years experience"
+        ],
+        "ats_tips": [
+            "Use a clear summary with your target role",
+            "Add measurable outcomes to experience bullets",
+            "Match important keywords from the job description",
+            "Avoid tables, images, or columns — ATS can't parse them",
+            "Save and submit as PDF unless otherwise requested"
         ]
     }
 

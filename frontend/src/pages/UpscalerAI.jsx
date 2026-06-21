@@ -1,12 +1,13 @@
 import { useState } from "react";
-import axios from "axios";
 import { Link } from "react-router-dom";
+import api from "../lib/api";
 
 export default function UpscalerAI() {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleFile = (e) => {
     const selected = e.target.files[0];
@@ -14,26 +15,32 @@ export default function UpscalerAI() {
       setFile(selected);
       setPreview(URL.createObjectURL(selected));
       setResult(null);
+      setError(null);
     }
   };
 
   const upscaleImage = async () => {
     if (!file) {
-      alert("Upload image first");
+      setError("Please upload an image first.");
       return;
     }
 
     setLoading(true);
+    setError(null);
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await axios.post("http://127.0.0.1:8000/upscale-image", formData);
+      const res = await api.post("/upscale-image", formData);
       setResult(res.data.image);
-    } catch (error) {
-      console.error(error);
-      alert("Upscaling failed");
+    } catch (err) {
+      console.error(err);
+      if (err.code === "ECONNABORTED") {
+        setError("Request timed out. The server may be waking up — please try again in 30 seconds.");
+      } else {
+        setError("Upscaling failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -57,14 +64,20 @@ export default function UpscalerAI() {
           </div>
         </div>
 
+        {/* Cold-start notice */}
+        <div className="mb-6 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
+          ⏳ <strong>First request may take ~30–60 seconds</strong> — the server wakes up on demand. Subsequent requests are fast.
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[1fr,1fr]">
           <div className="rounded-[32px] border border-slate-200/80 bg-white/90 p-8 shadow-soft dark:border-slate-800/80 dark:bg-slate-900/85">
             <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">Pick an image</label>
             <input type="file" accept="image/*" onChange={handleFile} className="mt-4 w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-brand-400 dark:focus:ring-brand-500/10" />
             <button onClick={upscaleImage} disabled={loading} className="mt-6 inline-flex w-full items-center justify-center rounded-3xl bg-brand-600 px-6 py-4 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60">
-              Upscale Image
+              {loading ? "Upscaling…" : "Upscale Image"}
             </button>
-            {loading && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Upscaling...</p>}
+            {loading && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Upscaling image — please wait…</p>}
+            {error && <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">{error}</p>}
           </div>
 
           <div className="space-y-6">
