@@ -5,3 +5,10 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: U2NET_HOME
+        value: /tmp/u2net
+      - key: NUMBA_CACHE_DIR
+        value: /tmp/numba_cache
+      - key: HOME
+        value: /tmp

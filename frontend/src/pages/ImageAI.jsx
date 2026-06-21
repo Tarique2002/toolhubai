@@ -37,7 +37,9 @@ export default function ImageAI() {
     } catch (err) {
       console.error(err);
       if (err.code === "ECONNABORTED") {
-        setError("Request timed out. The server may be waking up — please try again in 30 seconds.");
+        setError("Request timed out. The server may be waking up — please wait 30 seconds and try again.");
+      } else if (err.response?.data?.detail) {
+        setError(`Server error: ${err.response.data.detail}`);
       } else {
         setError("Something went wrong. Please try again.");
       }

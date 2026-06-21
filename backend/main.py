@@ -1,10 +1,16 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pdf2docx import Converter
 from PIL import Image, ImageEnhance, ImageFilter
-from rembg import remove
+
+# Set U2NET_HOME to /tmp BEFORE importing rembg so the model
+# downloads to a writable location on Render's filesystem
+import os
+os.environ.setdefault("U2NET_HOME", "/tmp/u2net")
+
+from rembg import remove, new_session
 
 from docx import Document
 from reportlab.lib.pagesizes import letter
@@ -16,10 +22,20 @@ import numpy as np
 import base64
 import uuid
 import io
-import os
 import textwrap
 
 app = FastAPI()
+
+# Pre-initialize rembg session at startup so the model is downloaded
+# once when the server boots, not on the first user request.
+# This avoids a 30-60s delay (and potential timeout) on first use.
+print("[startup] Loading rembg U2NET model...")
+try:
+    REMBG_SESSION = new_session("u2net")
+    print("[startup] rembg model loaded successfully.")
+except Exception as e:
+    print(f"[startup] WARNING: rembg model failed to load: {e}")
+    REMBG_SESSION = None
 
 
 # -------------------------
@@ -163,11 +179,25 @@ async def chat_assistant(request: ChatRequest):
 async def remove_bg(
     file: UploadFile = File(...)
 ):
-    contents = await file.read()
-    output = remove(contents)
-    encoded = base64.b64encode(output).decode("utf-8")
+    try:
+        contents = await file.read()
 
-    return {"image": encoded}
+        if REMBG_SESSION is not None:
+            # Use pre-loaded session (fast path)
+            output = remove(contents, session=REMBG_SESSION)
+        else:
+            # Fallback: try loading model on-demand
+            output = remove(contents)
+
+        encoded = base64.b64encode(output).decode("utf-8")
+        return {"image": encoded}
+
+    except Exception as e:
+        print(f"[remove-bg] Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Background removal failed: {str(e)}"
+        )
 
 
 # -------------------------
