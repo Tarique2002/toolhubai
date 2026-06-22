@@ -1,6 +1,8 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi import BackgroundTasks
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from pdf2docx import Converter
 from PIL import Image, ImageEnhance, ImageFilter
@@ -23,20 +25,40 @@ import base64
 import uuid
 import io
 import textwrap
+import threading
 
-app = FastAPI()
+# -------------------------
+# REMBG — lazy background load
+# The model (~176 MB) is downloaded in a background thread AFTER the
+# server has already bound its port. This prevents Render from timing
+# out the deploy while waiting for the port to open.
+# -------------------------
+REMBG_SESSION = None
+_model_ready = threading.Event()  # set once model is loaded or failed
 
-# Pre-initialize rembg session at startup so the model is downloaded
-# once when the server boots, not on the first user request.
-# This avoids a 30-60s delay (and potential timeout) on first use.
-print("[startup] Loading rembg U2NET model...")
-try:
-    REMBG_SESSION = new_session("u2net")
-    print("[startup] rembg model loaded successfully.")
-except Exception as e:
-    print(f"[startup] WARNING: rembg model failed to load: {e}")
-    REMBG_SESSION = None
 
+def _load_rembg():
+    global REMBG_SESSION
+    print("[model] Downloading / loading rembg U2NET model in background...")
+    try:
+        REMBG_SESSION = new_session("u2net")
+        print("[model] rembg model loaded successfully.")
+    except Exception as e:
+        print(f"[model] WARNING: rembg model failed to load: {e}")
+        REMBG_SESSION = None
+    finally:
+        _model_ready.set()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Kick off model download immediately but don't block the port bind
+    t = threading.Thread(target=_load_rembg, daemon=True)
+    t.start()
+    yield  # server is live here — Render sees the port open and marks deploy OK
+
+
+app = FastAPI(lifespan=lifespan)
 
 # -------------------------
 # CORS
@@ -192,16 +214,27 @@ async def remove_bg(
     try:
         contents = await file.read()
 
+        # Wait up to 120s for the background model thread to finish
+        if not _model_ready.is_set():
+            print("[remove-bg] Waiting for model to finish loading...")
+            loaded = _model_ready.wait(timeout=120)
+            if not loaded:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Model is still loading. Please retry in a moment."
+                )
+
         if REMBG_SESSION is not None:
-            # Use pre-loaded session (fast path)
             output = remove(contents, session=REMBG_SESSION)
         else:
-            # Fallback: try loading model on-demand
+            # Model failed to load — try on-demand as last resort
             output = remove(contents)
 
         encoded = base64.b64encode(output).decode("utf-8")
         return {"image": encoded}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[remove-bg] Error: {e}")
         raise HTTPException(
