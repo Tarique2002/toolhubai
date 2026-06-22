@@ -56,8 +56,18 @@ app.add_middleware(
 @app.get("/")
 def home():
     return {
-        "message": "ToolHubAI backend running 🚀"
+        "message": "ToolHubAI backend running 🚀",
+        "status": "ok",
+        "version": "1.0.0"
     }
+
+
+# -------------------------
+# HEALTH CHECK (for Render & uptime monitors)
+# -------------------------
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 # -------------------------

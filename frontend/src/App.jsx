@@ -13,6 +13,7 @@ import EnhanceAI from "./pages/EnhanceAI";
 import ResumeAnalyzer from "./pages/ResumeAnalyzer";
 import UpscalerAI from "./pages/UpscalerAI";
 import AIChat from "./pages/AIChat";
+import { pingBackend } from "./lib/api";
 
 const tools = [
   {
@@ -94,10 +95,20 @@ function Dashboard() {
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(false);
+  const [backendStatus, setBackendStatus] = useState("waking"); // "waking" | "ok" | "error"
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
+  // Ping backend on mount to warm it up from Render's free-tier sleep
+  useEffect(() => {
+    let cancelled = false;
+    pingBackend().then((alive) => {
+      if (!cancelled) setBackendStatus(alive ? "ok" : "error");
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <BrowserRouter>
@@ -120,6 +131,26 @@ export default function App() {
 
               <Topbar onNew={() => alert('Create new project coming soon')} />
             </div>
+
+            {/* Backend status banner */}
+            {backendStatus === "waking" && (
+              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400"></span>
+                <span><strong>Server is waking up…</strong> Render's free tier sleeps after 15 min. Your first request may take up to 60 seconds.</span>
+              </div>
+            )}
+            {backendStatus === "ok" && (
+              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 px-5 py-3 text-sm text-green-800 dark:border-green-700/50 dark:bg-green-900/20 dark:text-green-300">
+                <span className="inline-block h-2 w-2 rounded-full bg-green-500"></span>
+                <span><strong>Server is online</strong> — all tools are ready to use.</span>
+              </div>
+            )}
+            {backendStatus === "error" && (
+              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm text-red-800 dark:border-red-700/50 dark:bg-red-900/20 dark:text-red-300">
+                <span className="inline-block h-2 w-2 rounded-full bg-red-500"></span>
+                <span><strong>Backend unreachable.</strong> The server may be redeploying. Please wait a minute and refresh.</span>
+              </div>
+            )}
 
             <div className="mt-6">
               <Routes>
